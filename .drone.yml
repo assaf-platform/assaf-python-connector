@@ -1,0 +1,24 @@
+workspace:
+  base: /build
+  path: src/github.com/wonderkind/python-connector
+pipeline:
+  test:
+    image: 'python:3.6-stretch'
+    commands:
+      - 'pip install -r requirements.txt'
+      - 'pip install .'
+      - 'pip install pytest'
+      - 'pytest'
+      - 'python setup.py check'
+      - 'python setup.py bdist_wheel --universal'
+      - 'cat VERSION > .tags'
+    when:
+      event:
+        - push
+  publish:
+    image: plugins/gcr
+    registry: eu.gcr.io
+    repo: eu.gcr.io/wonderkind-data/assaf-python-connector
+    debug: true
+    secrets:
+      - google_credentials
