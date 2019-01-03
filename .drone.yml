@@ -18,7 +18,7 @@ pipeline:
     image: plugins/gcr
     registry: eu.gcr.io
     repo: eu.gcr.io/wonderkind-data/assaf-python-connector
-    tag: '${DRONE_COMMIT}'
+    tag: '${TAG}'
     debug: true
     secrets:
       - google_credentials
