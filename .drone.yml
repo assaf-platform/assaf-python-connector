@@ -10,15 +10,14 @@ pipeline:
       - 'pytest'
       - 'python setup.py check'
       - 'python setup.py bdist_wheel --universal'
+      - 'cat VERSION > .tags'
     when:
       event:
         - push
   publish:
-    commands: 'DOCKER_TAG=$(cat VERSION)'
     image: plugins/gcr
     registry: eu.gcr.io
     repo: eu.gcr.io/wonderkind-data/assaf-python-connector
-    tag: '${DOCKER_TAG}'
     debug: true
     secrets:
       - google_credentials
