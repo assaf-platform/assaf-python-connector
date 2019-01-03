@@ -7,6 +7,7 @@ pipeline:
     commands:
       - 'pip install -r requirements.txt'
       - 'pip install .'
+      - 'pip install pytest'
       - 'pytest'
       - 'python setup.py check'
       - 'python setup.py bdist_wheel --universal'
