@@ -14,7 +14,7 @@ pipeline:
       event:
         - push
   publish:
-    commands: 'TAG=${cat VERSION}'
+    commands: 'TAG=$(cat VERSION)'
     image: plugins/gcr
     registry: eu.gcr.io
     repo: eu.gcr.io/wonderkind-data/assaf-python-connector
