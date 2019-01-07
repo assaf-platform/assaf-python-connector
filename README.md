@@ -8,8 +8,10 @@ This is part of the assaf project  - Generic Model Serving Server
 
 
 
-Example usage: 
+### Example usages: 
 
+
+**Echo Server**:
 ```python
 import connect as con
 con.start({}, lambda profile: profile)
