@@ -69,7 +69,14 @@ def predict(request_id, req_body, service, options):
     return resp(req_body, r, request_id)
 
 def take_first_from_lists(dict):
-    return {k: v[0] for k, v in dict.items()}
+    new_dict = {}
+    for k,v in dict.items():
+        if len(v) == 1:
+            new_dict[k] = v[0]
+        else:
+            new_dict[k] = v
+
+    return new_dict
 
 
 def resp(query, res, request_id):
