@@ -54,7 +54,7 @@ setup(
 
     #
     packages=find_packages(exclude=['contrib', 'docs', 'tests']),  # Required
-
+    py_modules=['connect'],
 
     install_requires=['pika', 'pyzmq', 'configloader[yaml]'],  # Optional
 
