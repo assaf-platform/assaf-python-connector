@@ -5,11 +5,9 @@ RUN echo "deb http://download.opensuse.org/repositories/network:/messaging:/zero
 RUN curl https://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/Debian_9.0/Release.key | apt-key add
 RUN apt-get install -y libzmq3-dev
 
-COPY setup.py  libs/connector
-
-ADD connect/ /libs/connector/connect/
+COPY dist/assaf_connect-0.0.1-py3-none-any.whl /dist/assaf_connect-0.0.1-py3-none-any.whl
 RUN apt-get install -y python3-pip
-RUN pip3 install app/connect
+RUN pip3 install /dist/assaf_connect-0.0.1-py3-none-any.whl
 
 CMD ["python3"]
 
