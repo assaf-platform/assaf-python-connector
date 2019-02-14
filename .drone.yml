@@ -22,3 +22,13 @@ pipeline:
     debug: true
     secrets:
       - google_credentials
+  trigger:
+    image: plugins/downstream
+    settings:
+      server: http://ci.k8s1.wonderkind.cloud
+      token:
+        from_secret: drone_token
+      fork: true
+      repositories:
+        - octocat/Hello-World
+        - octocat/Spoon-Knife
