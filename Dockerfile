@@ -5,9 +5,9 @@ RUN echo "deb http://download.opensuse.org/repositories/network:/messaging:/zero
 RUN curl https://download.opensuse.org/repositories/network:/messaging:/zeromq:/release-stable/Debian_9.0/Release.key | apt-key add
 RUN apt-get install -y libzmq3-dev
 
-COPY setup.py  app/
+COPY setup.py  libs/connector
 
-ADD connect/ /app/connect
+ADD connect/ /libs/connector/connect
 RUN apt-get install -y python3-pip
 RUN pip3 install app/connect
 
