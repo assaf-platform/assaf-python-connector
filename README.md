@@ -16,3 +16,9 @@ con.start({}, lambda profile: profile)
 
 ```
 
+Development:
+
+local build: 
+```
+python3 setup.py sdist bdist_wheel
+```
