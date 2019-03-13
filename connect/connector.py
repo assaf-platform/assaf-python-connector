@@ -13,12 +13,15 @@ from connect.RabbitMqConnector import MessageQueue
 from connect.RabbitMqConnector import RabbitMqListener
 from connect.RabbitMqConnector import PikaClient
 
+from jaeger_client import Config
+from opentracing.propagation import Format
+
 from connect.config import config as cfg
 
 logging.getLogger("pika").setLevel(logging.WARNING)
 
 
-def handle_request(pubsuber, service, zmq_ipc_address):
+def handle_request(pubsuber, service, zmq_ipc_address, tracer):
     context = Context.instance()
     socket = context.socket(zmq.PULL)
     zmq_add = "ipc://" + zmq_ipc_address
@@ -29,21 +32,31 @@ def handle_request(pubsuber, service, zmq_ipc_address):
         logging.info("entering loop")
         future_q = socket.recv_multipart()
         print("got future from receive:", future_q)
-        future_q.add_done_callback(send_to_subs(pubsuber, service))
+        future_q.add_done_callback(send_to_subs(pubsuber, service, tracer))
 
         # return future_q
 
     return f
 
 
-def send_to_subs(pubsuber, service):
-    properties = {"app_id":pubsuber.routing_key,
-                 "content_type":'application/json'}
+def send_to_subs(pubsuber, service, tracer):
+    properties = {
+        "app_id":pubsuber.routing_key,
+        "content_type" : 'application/json',
+        "headers": {}
+    }
 
     def do_ds_query(incoming_message):
-        print(incoming_message)
-        query = "".join([s.decode("UTF-8") for s in incoming_message.result()])
-        print("got profile: ", query)
+
+        message = "".join([s.decode("UTF-8") for s in incoming_message.result()])
+        logging.info(message)
+        query_and_header = message.split('😏👀🍆')
+        query = query_and_header[0]
+        header = query_and_header[1]
+        pspan = tracer.extract(Format.TEXT_MAP, {"uber-trace-id": header})
+        work_span = tracer.start_span('messagePassedToModel', child_of=pspan)
+        # logging.info(query)
+        logging.info("got profile: %s", query)
         try:
             data_request = json.loads(query)
             query_body = data_request["body"]
@@ -53,14 +66,20 @@ def send_to_subs(pubsuber, service):
             response = predict(request_id, query_body, service, options)
             response_json = json.dumps(response)
             res = bytes(response_json, "UTF-8")
-            properties
-        except Exception:
+        except Exception as e:
             logging.exception("got error while doing ds query")
-            res = bytes("oops", "UTF_8")
-        print('publishing to', pubsuber.exchange_name, pubsuber.routing_key)
+            res = bytes(str(e), "UTF_8")
+        logging.info('publishing to: %s %s', pubsuber.exchange_name, pubsuber.routing_key)
+        publish_span = tracer.start_span('messagePublishedBackToFrontEnd', child_of=work_span)
+        properties["headers"]["uber-trace-id"] = str(publish_span).split(" ")[0]
         pubsuber.channel.basic_publish(pubsuber.exchange_name, str(request_id),
                                        res,
                                        PikaBasicProperties(**properties))
+        publish_span.finish()
+        work_span.finish()
+
+
+
 
     return do_ds_query
 
@@ -129,10 +148,24 @@ def start(conf, service):
                          "isAutoDelete": True
                      }
                      }
+
+    config = Config(
+        config={  # usually read from some yaml config
+            'sampler': {
+                'type': 'const',
+                'param': 1,
+            },
+            'logging': True,
+        },
+        service_name=cfg["incoming"]["queue_name"],
+        validate=True,
+    )
+    # this call also sets opentracing.tracer
+    tracer = config.initialize_tracer()
     pubsub = RabbitMqListener(pubsub_config)
 
-    messages = MessageQueue(RabbitMqListener(message_listener_config), ipc_address=zmq_ipc_address)
-    task = handle_request(pubsub, service, zmq_ipc_address)
+    messages = MessageQueue(RabbitMqListener(message_listener_config), tracer=tracer, ipc_address=zmq_ipc_address)
+    task = handle_request(pubsub, service, zmq_ipc_address, tracer)
     # Monkey patch task
     messages.task = task
     curr_loop = asyncio.get_event_loop()

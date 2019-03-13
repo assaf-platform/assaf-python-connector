@@ -1,7 +1,10 @@
 import logging
 import pika
 from zmq.asyncio import Context
-from zmq import PUSH
+from zmq import PUSH, SNDMORE
+from opentracing.propagation import Format
+
+
 class PikaClient(object):
     def __init__(self,
                  host,
@@ -51,7 +54,7 @@ class PikaClient(object):
         for listener in self.listeners:
             listener.start(channel)
 
-    def on_closed(self, connection):
+    def on_closed(self, connection, code, text):
         connection.close()
 
 
@@ -70,6 +73,8 @@ class ListenerConfig(object):
         self.routing_key = config["routing_key"]
         self.exchange_durable = config["exchange"]["isDurable"]
         self.exchange_auto_delete = config["exchange"]["isAutoDelete"]
+
+
 
 
 class RabbitMqListener(ListenerConfig):
@@ -114,17 +119,28 @@ class RabbitMqListener(ListenerConfig):
 class MessageQueue(RabbitMqListener):
     def __init__(self,
                  listener: RabbitMqListener,
-                 ipc_address):
+                 ipc_address,
+                 tracer):
         RabbitMqListener.__init__(self, listener.config)
         context = Context.instance()
         self.socket = context.socket(PUSH)
         self.socket.bind("ipc://" + ipc_address)
+        self.tracer = tracer
 
     def on_queue_bind(self, frame):
         self.channel.basic_consume(self.on_message, self.routing_key)
 
     def on_message(self, channel, method_frame, header_frame, body):
-        self.socket.send(body)
+
+        incoming_trace_id =  header_frame.headers["uber-trace-id"]
+        carrier = {"uber-trace-id": str(incoming_trace_id)}
+        pspan = self.tracer.extract(Format.TEXT_MAP, carrier)
+        span = self.tracer.start_span('messageReceived', child_of=pspan)
+        self.socket.send(body, SNDMORE)
+        self.socket.send(bytes('😏👀🍆', "UTF-8"), SNDMORE)
+        self.socket.send(bytes(str(span).split(" ")[0], "UTF-8"))
         self.client.connection.ioloop.add_callback_threadsafe(self.task)
+        span.finish()
         print("msg sent")
+
         self.channel.basic_ack(delivery_tag=method_frame.delivery_tag)

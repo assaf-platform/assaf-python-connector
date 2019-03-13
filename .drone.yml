@@ -30,5 +30,4 @@ pipeline:
         from_secret: drone_token
       fork: true
       repositories:
-        - octocat/Hello-World
-        - octocat/Spoon-Knife
+        - wonderkind/wonderkind-data-docker-base
