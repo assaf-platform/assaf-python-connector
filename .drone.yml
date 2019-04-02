@@ -28,6 +28,5 @@ pipeline:
     image: plugins/downstream
     server: http://drone-drone
     # this is bad but not that bad since our drone server is behind firewalls and you can't do too much with the token except for triggering builds
-    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0ZXh0IjoicmFhbTg2IiwidHlwZSI6InVzZXIifQ.spnZ2R9ile93iJIotSjNFe_BHvOzTQDl8jXdB8d1Gx8    fork: true
     repositories:
       - wonderkind/wonderkind-data-docker-base
