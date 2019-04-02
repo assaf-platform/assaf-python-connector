@@ -23,11 +23,10 @@ pipeline:
     secrets:
       - google_credentials
   trigger:
+    when:
+      branch: master
     image: plugins/downstream
-    settings:
-      server: http://ci.k8s1.wonderkind.cloud
-      token:
-        from_secret: drone_token
-      fork: true
-      repositories:
-        - wonderkind/wonderkind-data-docker-base
+    server: http://drone-drone
+    # this is bad but not that bad since our drone server is behind firewalls and you can't do too much with the token except for triggering builds
+    repositories:
+      - wonderkind/wonderkind-data-docker-base

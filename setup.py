@@ -58,7 +58,7 @@ setup(
     packages=find_packages(exclude=['contrib', 'docs', 'tests']),  # Required
     py_modules=['connect'],
 
-    install_requires=['pika', 'pyzmq', 'configloader[yaml]', 'jaeger-client'],  # Optional
+    install_requires=['pika==0.13.0', 'pyzmq', 'configloader[yaml]', 'jaeger-client'],  # Optional
 
 
     extras_require={  # Optional
