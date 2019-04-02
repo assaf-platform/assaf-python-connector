@@ -7,6 +7,7 @@ from time import time
 from zmq.asyncio import Context
 
 from pika import BasicProperties as PikaBasicProperties
+from pika.adapters.asyncio_connection import IOLoopAdapter
 
 from connect.RabbitMqConnector import MessageQueue
 from connect.RabbitMqConnector import RabbitMqListener
@@ -168,6 +169,7 @@ def start(conf, service):
     # Monkey patch task
     messages.task = task
     curr_loop = asyncio.get_event_loop()
+    loop = IOLoopAdapter(curr_loop)
     rabbit_url = cfg["rabbitmq_host"]  # localhost
     rabbit_port = cfg["rabbitmq_port"]  # 32769
     rabbit_vhost = "/"
@@ -178,7 +180,7 @@ def start(conf, service):
                         rabbit_vhost,
                         rabbit_username,
                         rabbut_password,
-                        loop=curr_loop,
+                        loop=loop,
                         listeners=[pubsub, messages])
 
     # Monkey patch client
