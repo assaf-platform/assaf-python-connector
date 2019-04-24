@@ -7,7 +7,7 @@ RUN apt-get install -y libzmq3-dev
 
 COPY dist/assaf_connect-0.0.1-py2.py3-none-any.whl /dist/assaf_connect-0.0.1-py2.py3-none-any.whl
 RUN apt-get install -y python3-pip
-RUN pip3 install /dist/assaf_connect-0.0.1-py2.py3-none-any.whl
+RUN pip3 install /dist/assaf_connect*
 
 CMD ["python3"]
 

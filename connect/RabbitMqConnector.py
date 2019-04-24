@@ -44,7 +44,6 @@ class PikaClient(object):
                                                 on_open_callback=self.on_connected,
                                                 custom_ioloop=self.loop)
         self.connection.add_on_close_callback(self.on_closed)
-
     def on_connected(self, connection):
         self.connected = True
         self.connection = connection
@@ -54,8 +53,13 @@ class PikaClient(object):
         for listener in self.listeners:
             listener.start(channel)
 
+
+    def on_channel_close(self, channel):
+        logging.ERROR("channel closed")
+
+
     def on_closed(self, connection, code, text):
-        connection.close()
+        logging.ERROR("connectionn closed", code, text)
 
 
 class ListenerConfig(object):

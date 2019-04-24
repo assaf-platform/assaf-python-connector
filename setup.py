@@ -15,10 +15,14 @@ try:
         long_description = f.read()
 except Exception:
     long_description = ""
+
+with open(path.join(here, 'VERSION'), encoding='utf-8') as f:
+    version = f.read()
+
 setup(
     name='assaf-connect',  # Required
 
-    version='0.0.1',
+    version=version,
 
     description='deploy any function',  # Optional
 

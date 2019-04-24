@@ -66,12 +66,19 @@ def send_to_subs(pubsuber, service, tracer):
             response = predict(request_id, query_body, service, options)
             response_json = json.dumps(response)
             res = bytes(response_json, "UTF-8")
+            properties["headers"]["http-status"] = 200
+        except KeyError as e:
+            logging.exception("Key not found")
+            properties["headers"]["http-status"] = 404
+            res = bytes(str(e), "UTF_8")
         except Exception as e:
             logging.exception("got error while doing ds query")
+            properties["headers"]["http-status"] = 500
             res = bytes(str(e), "UTF_8")
         logging.info('publishing to: %s %s', pubsuber.exchange_name, pubsuber.routing_key)
         publish_span = tracer.start_span('messagePublishedBackToFrontEnd', child_of=work_span)
         properties["headers"]["uber-trace-id"] = str(publish_span).split(" ")[0]
+
         pubsuber.channel.basic_publish(pubsuber.exchange_name, str(request_id),
                                        res,
                                        PikaBasicProperties(**properties))
@@ -111,6 +118,18 @@ def resp(query, res, request_id):
 def normalize_names(*name):
     return ".".join([n.replace("-", "") for n in name])
 
+def init_jaeger_tracer(service_name='your-app-name'):
+    c = {  # usually read from some yaml config
+            'sampler': {
+                'type': 'const',
+                'param': 1,
+            },
+            'logging': True,
+        }
+
+    config = Config(config=c, service_name=service_name, validate=True)
+    tracer = config.initialize_tracer()
+    return tracer
 
 def start(conf, service):
     cfg.update(conf.items())
@@ -149,19 +168,7 @@ def start(conf, service):
                      }
                      }
 
-    config = Config(
-        config={  # usually read from some yaml config
-            'sampler': {
-                'type': 'const',
-                'param': 1,
-            },
-            'logging': True,
-        },
-        service_name=cfg["incoming"]["queue_name"],
-        validate=True,
-    )
-    # this call also sets opentracing.tracer
-    tracer = config.initialize_tracer()
+    tracer = init_jaeger_tracer(incoming_queue_name)
     pubsub = RabbitMqListener(pubsub_config)
 
     messages = MessageQueue(RabbitMqListener(message_listener_config), tracer=tracer, ipc_address=zmq_ipc_address)
@@ -195,7 +202,18 @@ def start(conf, service):
     except Exception:
         logging.exception("something went wrong")
         client.connection.close()
+        exit(1)
+
 
 
 if __name__ == '__main__':
-    start({}, lambda profile: profile)
+    from time import sleep
+    def my(profile):
+        # sleep(1)
+        raise KeyError("Key not found in this function!")
+        return 3
+    try:
+        print(my("f"))
+    except Exception:
+        print("yep")
+    start({}, my)
