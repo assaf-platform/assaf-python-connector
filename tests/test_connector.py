@@ -1,5 +1,4 @@
-from connect.connector import normalize_names
-from connect.connector import take_first_from_lists
+from connect.utils import normalize_names, take_first_from_lists
 
 
 def test_normalize_names():

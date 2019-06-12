@@ -1,9 +1,7 @@
-
 import json
 import zmq
 import asyncio
 import logging
-from time import time
 from zmq.asyncio import Context
 
 from pika import BasicProperties as PikaBasicProperties
@@ -13,10 +11,11 @@ from connect.RabbitMqConnector import MessageQueue
 from connect.RabbitMqConnector import RabbitMqListener
 from connect.RabbitMqConnector import PikaClient
 
-from jaeger_client import Config
 from opentracing.propagation import Format
 
 from connect.config import config as cfg
+from connect.response import init_jaeger_tracer, resp
+from connect.utils import normalize_names, take_first_from_lists
 
 logging.getLogger("pika").setLevel(logging.WARNING)
 
@@ -26,6 +25,7 @@ def handle_request(pubsuber, service, zmq_ipc_address, tracer):
     socket = context.socket(zmq.PULL)
     zmq_add = "ipc://" + zmq_ipc_address
     socket.connect(zmq_add)
+
     def f():
         print("checking messages on zmq....")
         # print("f got argument:", frame)
@@ -41,8 +41,8 @@ def handle_request(pubsuber, service, zmq_ipc_address, tracer):
 
 def send_to_subs(pubsuber, service, tracer):
     properties = {
-        "app_id":pubsuber.routing_key,
-        "content_type" : 'application/json',
+        "app_id": pubsuber.routing_key,
+        "content_type": 'application/json',
         "headers": {}
     }
 
@@ -50,21 +50,27 @@ def send_to_subs(pubsuber, service, tracer):
 
         message = "".join([s.decode("UTF-8") for s in incoming_message.result()])
         logging.info(message)
+        ### The assaf python connector protocol is
+        ### MESSAGE😏👀🍆UBER_TRACE_ID
         query_and_header = message.split('😏👀🍆')
         query = query_and_header[0]
-        header = query_and_header[1]
-        pspan = tracer.extract(Format.TEXT_MAP, {"uber-trace-id": header})
+        trace_id = query_and_header[1]
+        pspan = tracer.extract(Format.TEXT_MAP, {"uber-trace-id": trace_id})
         work_span = tracer.start_span('messagePassedToModel', child_of=pspan)
         # logging.info(query)
-        logging.info("got profile: %s", query)
         try:
+            # 1. load data
             data_request = json.loads(query)
+            logging.info("got profile: %s", query)
             query_body = data_request["body"]
             options = take_first_from_lists(data_request["options"])
             request_id = data_request["request-id"]
             options.update({"profile": query_body})
+            work_span.log_kv({"query": query_body, "options": options})
+            # 2. call provided function using arguments
             response = predict(request_id, query_body, service, options)
             response_json = json.dumps(response)
+            # We need bytes for rabbitmq
             res = bytes(response_json, "UTF-8")
             properties["headers"]["http-status"] = 200
         except KeyError as e:
@@ -75,18 +81,15 @@ def send_to_subs(pubsuber, service, tracer):
             logging.exception("got error while doing ds query")
             properties["headers"]["http-status"] = 500
             res = bytes(str(e), "UTF_8")
+        work_span.finish()
         logging.info('publishing to: %s %s', pubsuber.exchange_name, pubsuber.routing_key)
-        publish_span = tracer.start_span('messagePublishedBackToFrontEnd', child_of=work_span)
+        publish_span = tracer.start_span('messagePublishedFromService', child_of=pspan)
         properties["headers"]["uber-trace-id"] = str(publish_span).split(" ")[0]
-
+        publish_span.log_kv({"response": res.decode("UTF-8")})
         pubsuber.channel.basic_publish(pubsuber.exchange_name, str(request_id),
                                        res,
                                        PikaBasicProperties(**properties))
         publish_span.finish()
-        work_span.finish()
-
-
-
 
     return do_ds_query
 
@@ -95,43 +98,8 @@ def predict(request_id, req_body, service, options):
     r = service(**options)
     return resp(req_body, r, request_id)
 
-def take_first_from_lists(dict):
-    new_dict = {}
-    for k,v in dict.items():
-        if len(v) == 1:
-            new_dict[k] = v[0]
-        else:
-            new_dict[k] = v
 
-    return new_dict
-
-
-def resp(query, res, request_id):
-    return {"version": 1,
-            "timestamp": time(),
-            "profile-name": query,
-            "request-id": request_id,
-            cfg["response"]["json"]["return_key"]: res
-            }
-
-
-def normalize_names(*name):
-    return ".".join([n.replace("-", "") for n in name])
-
-def init_jaeger_tracer(service_name='your-app-name'):
-    c = {  # usually read from some yaml config
-            'sampler': {
-                'type': 'const',
-                'param': 1,
-            },
-            'logging': True,
-        }
-
-    config = Config(config=c, service_name=service_name, validate=True)
-    tracer = config.initialize_tracer()
-    return tracer
-
-def start(conf, service):
+def init_listeners(conf, service):
     cfg.update(conf.items())
     incoming_queue_name = cfg["incoming"]["queue_name"]
     incoming_exchange_name = cfg["incoming"]["exchange_name"]
@@ -170,18 +138,22 @@ def start(conf, service):
 
     tracer = init_jaeger_tracer(incoming_queue_name)
     pubsub = RabbitMqListener(pubsub_config)
-
-    messages = MessageQueue(RabbitMqListener(message_listener_config), tracer=tracer, ipc_address=zmq_ipc_address)
     task = handle_request(pubsub, service, zmq_ipc_address, tracer)
+    messages = MessageQueue(RabbitMqListener(message_listener_config), tracer=tracer, ipc_address=zmq_ipc_address)
+    return  pubsub, messages, task
+
+def start(conf, service):
+    pubsub, messages, task = init_listeners(conf, service)
+
     # Monkey patch task
     messages.task = task
     curr_loop = asyncio.get_event_loop()
     loop = IOLoopAdapter(curr_loop)
-    rabbit_url = cfg["rabbitmq_host"]  # localhost
-    rabbit_port = cfg["rabbitmq_port"]  # 32769
+    rabbit_url = cfg["rabbitmq_host"]
+    rabbit_port = cfg["rabbitmq_port"]
     rabbit_vhost = "/"
-    rabbit_username = cfg["rabbitmq_username"]  # "guest"
-    rabbut_password = cfg["rabbitmq_password"]  # "guest"
+    rabbit_username = cfg["rabbitmq_username"]
+    rabbut_password = cfg["rabbitmq_password"]
     client = PikaClient(rabbit_url,
                         rabbit_port,
                         rabbit_vhost,
@@ -196,24 +168,21 @@ def start(conf, service):
         client.connect()
         client.connection.ioloop.add_callback_threadsafe(task)
         client.connection.ioloop.start()
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as ki:
         logging.info("W: interrupt received, stopping…")
-        exit(0)
-    except Exception:
+    except Exception as e:
         logging.exception("something went wrong")
-        client.connection.close()
-        exit(1)
-
+    finally:
+        import os
+        loop.stop()
+        loop.close()
+        curr_loop.shutdown_asyncgens()
+        os._exit(1)
 
 
 if __name__ == '__main__':
-    from time import sleep
     def my(profile):
-        # sleep(1)
-        raise KeyError("Key not found in this function!")
         return 3
-    try:
-        print(my("f"))
-    except Exception:
-        print("yep")
+
+
     start({}, my)
