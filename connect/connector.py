@@ -181,8 +181,13 @@ def start(conf, service):
 
 
 if __name__ == '__main__':
-    def my(profile):
-        return 3
+    def my(profile, numbers):
+        print(profile)
+        i = 0
+        for n in numbers:
+            i = i + n['num']
+
+        return i
 
 
     start({}, my)
